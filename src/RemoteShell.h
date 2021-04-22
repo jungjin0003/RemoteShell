@@ -11,3 +11,6 @@ typedef struct _IPC_PIPE
     HANDLE hParentRead;
     HANDLE hChildWrite;
 } IPC_PIPE, *PIPC_PIPE;
+
+int ConnectShell(char *path, SOCKET s, HANDLE hEvent);
+HANDLE ProcessStart(char *path, IPC_PIPE *IpcPipe);

