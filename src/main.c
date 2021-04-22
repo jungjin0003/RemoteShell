@@ -3,11 +3,9 @@
 int main()
 {
     WSADATA wsadata;
-
     WSAStartup(MAKEWORD(2, 2), &wsadata);
 
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
     SOCKADDR_IN sockaddr;
 
     ZeroMemory(&sockaddr, sizeof(SOCKADDR_IN));

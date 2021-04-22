@@ -10,7 +10,9 @@ int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
     if (hEvent == NULL)
     {
         printf("[*] Socket event not found!\n");
+        printf("[+] Create socket event...\n");
         hEvent = WSACreateEvent();
+        printf("[+] Set network event : FD_READ, FD_CLOSE\n");
         WSAEventSelect(s, hEvent, FD_READ | FD_CLOSE);
     }
     else
@@ -18,6 +20,7 @@ int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
         printf("[*] Socket event found!\n");
     }
 
+    printf("[*] Process starting...\n");
     HANDLE hProcess = ProcessStart(path, &IpcPipe);
 
     DWORD dwOut = 0, dwRead = 0;
@@ -29,6 +32,7 @@ int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
         if (PeekNamedPipe(IpcPipe.hParentRead, NULL, 0, NULL, &dwOut, NULL) && dwOut > 0)
         {
             ReadFile(IpcPipe.hParentRead, Buffer, sizeof(Buffer), &dwRead, NULL);
+            printf("[+] Send by %d Byte\n", dwRead);
             Buffer[dwRead] = NULL;
             // printf("%s", Buffer);
             DataSend(s, Buffer);
@@ -46,7 +50,7 @@ int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
 
         if (NetworkEvents.lNetworkEvents & FD_READ)
         {
-            DataRecv(s, Buffer);
+            printf("[+] Receive by %d Byte\n", DataRecv(s, Buffer));
             WriteFile(IpcPipe.hParentWrite, Buffer, strlen(Buffer), NULL, NULL);
         }
         else if (NetworkEvents.lNetworkEvents & FD_CLOSE)
@@ -79,6 +83,8 @@ HANDLE ProcessStart(char *path, IPC_PIPE *IpcPipe)
     sa.bInheritHandle = TRUE;
     sa.lpSecurityDescriptor = NULL;
 
+    printf("[*] Create stdin, stdout pipe\n");
+
     CreatePipe(&IpcPipe->hChildRead, &IpcPipe->hParentWrite, &sa, 0);
     CreatePipe(&IpcPipe->hParentRead, &IpcPipe->hChildWrite, &sa, 0);
 
@@ -96,6 +102,8 @@ HANDLE ProcessStart(char *path, IPC_PIPE *IpcPipe)
         printf("[+] GetLastError : %d\n");
         return 1;
     }
+
+    printf("[*] Process started!\n");
 
     CloseHandle(pi.hThread);
 
