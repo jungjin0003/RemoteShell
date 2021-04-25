@@ -62,7 +62,7 @@ int ConnectShell(char *path, SOCKET s, HANDLE hEvent)
         if (WaitForSingleObject(hProcess, 0) == 0)
         {
             printf("[*] Process terminated!\n");
-            DataSend(s, "[*] Process terminated!");
+            DataSend(s, "\n[*] Process terminated!\n");
             break;
         }
     }
